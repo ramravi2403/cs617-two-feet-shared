@@ -1,0 +1,18 @@
+[project]
+name = "Two-feet: Biped Walker"
+version = "0.1.0"
+description = "Implementation of various RL algorithms on the Biped Walker environment"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gym>=0.26.2",
+    "gymnasium[box2d,other]>=1.1.1",
+    "ipykernel>=6.29.5",
+    "optuna>=4.3.0",
+    "pettingzoo>=1.25.0",
+    "pygame>=2.6.1",
+    "swig>=4.3.1",
+    "torch>=2.7.0",
+    "torchaudio>=2.7.0",
+    "torchvision>=0.22.0",
+]
