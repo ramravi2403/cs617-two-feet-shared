@@ -4,6 +4,11 @@ This repository contains implementations of Soft Actor-Critic (SAC) and Advantag
 
 ## Installation
 
+If you use [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency management
+```bash
+uv sync
+```
+
 1. Create a virtual environment (optional but recommended):
 ```bash
 python -m venv venv
@@ -13,11 +18,6 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 2. Install dependencies:
 ```bash
 pip install -r requirements.txt
-```
-
-If you use [uv](https://docs.astral.sh/uv/getting-started/installation/) for dependency management
-```bash
-uv sync
 ```
 
 ## Usage
@@ -116,17 +116,3 @@ results/
         a2c_actor_critic_step_XXXXX.pth
         videos/  (if --save_video is enabled)
 ```
-
-## Training Tips
-
-### SAC Tips
-- The agent typically requires around 1-2 million steps to achieve good performance
-- GPU training is automatically enabled if available
-- Early episodes may have low rewards as the agent learns to balance
-- The SAC algorithm is quite stable and should show steady improvement over time
-
-### A2C Tips
-- A2C typically learns faster in the early stages compared to SAC
-- The update frequency (default: 2048) can be adjusted based on performance
-- Higher entropy coefficient can help with exploration
-- A2C is more sample-efficient but might not achieve the same final performance as SAC
