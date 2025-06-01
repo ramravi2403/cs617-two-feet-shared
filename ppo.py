@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import gymnasium as gym
+from torch.xpu import device
+
 from common.utils import get_env_info
 from torch.distributions import Normal
 import matplotlib.pyplot as plt
@@ -251,7 +253,9 @@ class PPOAgent:
 
         try:
             # Load the state dictionary
-            checkpoint = torch.load(checkpoint_path)
+            torch.serialization.add_safe_globals([np._core.multiarray.scalar])
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            checkpoint = torch.load(checkpoint_path,  map_location=device, weights_only=False)
 
             # Load actor-critic network state
             self.actor_critic.load_state_dict(checkpoint['actor_critic_state'])
@@ -380,7 +384,7 @@ def evaluate_policy(env, agent, num_episodes=5, render=False):
             if render:
                 env.render()
 
-            action = agent.select_action(obs)
+            action = agent.select_action(obs, evaluate=True)
             obs, reward, done, truncated, _ = env.step(action)
             episode_reward += reward
 
