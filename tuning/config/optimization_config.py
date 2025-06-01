@@ -19,4 +19,5 @@ class OptimizationConfig:
     timeout_hours: int
     hyperparameters: Dict[str, ParameterRange]
     seed: int = 0
+    hardcore: bool = False
 

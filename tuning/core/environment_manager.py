@@ -12,7 +12,11 @@ class EnvironmentManager:
         self._env = None
 
     def create_environment(self) -> gym.Env:
-        self._env = setup_environment(self.config.env_name, self.config.seed)
+        self._env = setup_environment(
+            env_name=self.config.env_name,
+            seed=self.config.seed,
+            hardcore=self.config.hardcore,
+        )
         return self._env
 
     def get_env_info(self) -> Tuple[int, int, float]:
