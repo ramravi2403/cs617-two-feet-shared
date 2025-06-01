@@ -6,6 +6,8 @@ import gymnasium as gym
 from common.utils import get_env_info
 from torch.distributions import Normal
 import matplotlib.pyplot as plt
+import argparse
+import os
 
 class MLPActorCritic(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden_sizes=(64, 64), log_std_init=-0.5):
@@ -300,11 +302,6 @@ class PPOAgent:
     #     plt.ylabel("Average Reward")
     #     plt.title("Average Reward per Epoch")
     #     plt.show()
-
-
-import argparse
-import gymnasium as gym
-import os
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Train or evaluate PPO agent')

@@ -3,10 +3,10 @@ from tuning.config.optimization_config import OptimizationConfig, ParameterRange
 PPO_CONFIG = OptimizationConfig(
     env_name="BipedalWalker-v3",
     seed=0,
-    max_timesteps=50_000,
+    max_timesteps=400_000,
     eval_interval=1000,
     n_eval_episodes=5,
-    n_trials=10,
+    n_trials=32,
     timeout_hours=8,
     hyperparameters={
         # Learning rates

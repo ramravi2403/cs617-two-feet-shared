@@ -1,24 +1,14 @@
-# main.py
-import optuna
-
 from tuning.config.ppo_config import PPO_CONFIG
+from tuning.core.optimization_manager import OptimizationManager
 from tuning.trainers.ppo_trainer import PPOTrainer
 
-
-def objective(trial: optuna.Trial) -> float:
-    # Create trainer
-    trainer = PPOTrainer(PPO_CONFIG)
-
-    # Train and return mean reward
-    return trainer.train_agent(trial)
 
 
 def main():
     # Create study
-    study = optuna.create_study(study_name="PPO_GAE", direction="maximize")
-
-    # Optimize
-    study.optimize(objective, n_trials=50)
+    trainer = PPOTrainer(PPO_CONFIG)
+    optimizer = OptimizationManager(PPO_CONFIG, trainer)
+    study = optimizer.optimize()
 
     # Print results
     print("Best trial:")
