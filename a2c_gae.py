@@ -21,23 +21,23 @@ class Policy(nn.Module):
         super().__init__()
         self.activation = torch.tanh
 
-        self.affine_layers = nn.ModuleList([
+        self.hidden_layers = nn.ModuleList([
             nn.Linear(state_dim, hidden_dim),
             nn.Linear(hidden_dim, hidden_dim)
         ])
 
-        self.action_mean = nn.Linear(hidden_dim, action_dim)
-        self.action_mean.weight.data.mul_(0.1)
-        self.action_mean.bias.data.mul_(0.0)
+        self.action_mean_layer = nn.Linear(hidden_dim, action_dim)
+        self.action_mean_layer.weight.data.mul_(0.1)
+        self.action_mean_layer.bias.data.mul_(0.0)
 
-        self.action_log_std = nn.Parameter(torch.ones(1, action_dim) * log_std_init)
+        self.log_std_param = nn.Parameter(torch.ones(1, action_dim) * log_std_init)
 
     def forward(self, state):
         x = state
-        for layer in self.affine_layers:
+        for layer in self.hidden_layers:
             x = self.activation(layer(x))
-        mean = self.action_mean(x)
-        std = torch.exp(self.action_log_std.expand_as(mean))
+        mean = self.action_mean_layer(x)
+        std = torch.exp(self.log_std_param.expand_as(mean))
         return mean, std
 
     def sample(self, state):
@@ -54,20 +54,20 @@ class Value(nn.Module):
         super().__init__()
         self.activation = torch.tanh
 
-        self.affine_layers = nn.ModuleList([
+        self.hidden_layers = nn.ModuleList([
             nn.Linear(state_dim, hidden_dim),
             nn.Linear(hidden_dim, hidden_dim)
         ])
 
-        self.value_head = nn.Linear(hidden_dim, 1)
-        self.value_head.weight.data.mul_(0.1)
-        self.value_head.bias.data.mul_(0.0)
+        self.critic_output = nn.Linear(hidden_dim, 1)
+        self.critic_output.weight.data.mul_(0.1)
+        self.critic_output.bias.data.mul_(0.0)
 
     def forward(self, state):
         x = state
-        for layer in self.affine_layers:
+        for layer in self.hidden_layers:
             x = self.activation(layer(x))
-        return self.value_head(x).squeeze(-1)
+        return self.critic_output(x).squeeze(-1)
 
 
 class A2C:
