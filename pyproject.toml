@@ -1,5 +1,5 @@
 [project]
-name = "Two-feet: Biped Walker"
+name = "Two-feet-Biped-Walker"
 version = "0.1.0"
 description = "Implementation of various RL algorithms on the Biped Walker environment"
 readme = "README.md"
