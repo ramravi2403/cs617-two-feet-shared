@@ -12,7 +12,7 @@ PPO_CONFIG = OptimizationConfig(
         # Learning rates
         'lr': ParameterRange(1e-5, 1e-3, log_scale=True),
         # Discount and GAE parameters
-        'gamma': ParameterRange(0.9, 0.999),
+        # 'gamma': ParameterRange(0.9, 0.999),
         # PPO specific parameters
         'clip_ratio': ParameterRange(0.1, 0.3),
         # # Training parameters
@@ -21,6 +21,7 @@ PPO_CONFIG = OptimizationConfig(
         # 'train_iters': ParameterRange(20, 400, step=10),
         # # Normalization and clipping
         'target_kl': ParameterRange(0.00, 0.03),
+        'entropy_coef': ParameterRange(0.00, 0.02),
         'n_steps': ParameterRange(8, 32, step=1),
     }
 )

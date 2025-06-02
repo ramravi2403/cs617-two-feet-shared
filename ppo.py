@@ -67,6 +67,7 @@ class PPOAgent:
         lam=0.95,
         steps_per_epoch=4000,
         batch_size=64,
+        entrpoy_coef=0.1,
             **kwargs
     ):
         self.actor_critic = MLPActorCritic(obs_dim, act_dim, hidden_sizes).to(device)
@@ -81,6 +82,7 @@ class PPOAgent:
         self.batch_size = batch_size
         self.act_limit = torch.tensor(act_limit).to(self.device)
         self.reward_avg = []
+        self.entropy_coef = entrpoy_coef
         self.logs = {
             "actor_loss": [],
             "critic_loss": [],
@@ -121,7 +123,7 @@ class PPOAgent:
                 loss_v = ((values - ret_buf[batch_idx]) ** 2).mean()
                 loss_entropy = entropy.mean()
 
-                loss = loss_pi + 0.5 * loss_v - 0.01 * loss_entropy
+                loss = loss_pi + 0.5 * loss_v - self.entropy_coef * loss_entropy
 
                 self.optimizer.zero_grad()
                 loss.backward()
