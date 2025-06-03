@@ -3,8 +3,8 @@ import os
 import json
 from datetime import datetime
 
-from config.optimization_config import OptimizationConfig
-from trainers.base_trainer import BaseTrainer
+from tuning.config.optimization_config import OptimizationConfig
+from tuning.trainers.base_trainer import BaseTrainer
 
 
 class OptimizationManager:
