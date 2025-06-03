@@ -136,6 +136,65 @@ Example with custom parameters:
 python a2c_gae.py --max_timesteps 2000000 --save_video --gae_lambda 0.95
 ```
 
+
+### PPO Implementation
+
+To train the PPO agent with default parameters:
+
+```bash
+python ppo.py train
+```
+
+#### PPO Command Line Arguments (Training)
+
+* `--env`: Gymnasium environment ID (default: `BipedalWalker-v3`)
+* `--render`: Render the environment during evaluation
+* `--total-timesteps`: Total timesteps for training (default: `1000000`)
+* `--learning-rate`: Learning rate (default: `0.0003`)
+* `--batch-size`: Batch size (default: `64`)
+* `--n-epochs`: Number of epochs per policy update (default: `10`)
+* `--gamma`: Discount factor (default: `0.99`)
+* `--gae-lambda`: GAE lambda parameter (default: `0.95`)
+* `--clip-range`: PPO clip range (default: `0.2`)
+* `--save-dir`: Directory to save model checkpoints (default: `checkpoints`)
+* `--save-freq`: Save frequency in episodes (default: `10`)
+* `--load-model`: Path to load a saved model (default: `None`)
+* `--eval-freq`: Evaluation frequency in episodes (default: `10`)
+* `--eval-episodes`: Number of evaluation episodes (default: `5`)
+
+Example:
+
+```bash
+python ppo.py train \
+    --total-timesteps 2000000 \
+    --batch-size 128 \
+    --eval-freq 20 \
+    --save-freq 20
+```
+
+To evaluate a trained PPO model:
+
+```bash
+python ppo.py eval --model-path checkpoints/ppo_BipedalWalker-v3.pth
+```
+
+#### PPO Command Line Arguments (Evaluation)
+
+* `--env`: Gymnasium environment ID (default: `BipedalWalker-v3`)
+* `--model-path`: Path to the saved model (**required**)
+* `--num-episodes`: Number of episodes to evaluate (default: `10`)
+* `--render`: Render the environment during evaluation
+
+Example:
+
+```bash
+python ppo.py eval \
+    --model-path checkpoints/ppo_BipedalWalker-v3.pth \
+    --num-episodes 20 \
+    --render
+```
+
+
 ### Random Agent
 
 To run the random agent:
