@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Set plot style
-plt.style.use("seaborn-v0_8-whitegrid")
+plt.style.use("seaborn-whitegrid")
 sns.set_context("paper", font_scale=1.5)
 sns.set_style("whitegrid")
 

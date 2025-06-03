@@ -1,6 +1,6 @@
-from tuning.config.ppo_config import PPO_CONFIG
-from tuning.core.optimization_manager import OptimizationManager
-from tuning.trainers.ppo_trainer import PPOTrainer
+from config.ppo_config import PPO_CONFIG
+from core.optimization_manager import OptimizationManager
+from trainers.ppo_trainer import PPOTrainer
 
 
 
