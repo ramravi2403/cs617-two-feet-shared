@@ -47,7 +47,7 @@ class PPOTrainer(BaseTrainer):
         self.dones.append(float(done))
 
         if len(self.states) >= params['n_steps'] or done:
-            print("Updating agent") 
+            print("Updating agent")
             agent.train(
                 self.states, self.actions, self.rewards,
                 self.dones,
