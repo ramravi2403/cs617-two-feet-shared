@@ -34,63 +34,80 @@ class PPO(BaseAgent):
         device,
         lr=3e-4,
         gamma=0.99,
+        gae_lambda=0.95,
         clip_range=0.2,
         entropy_coef=0.01,
         vf_coef=0.5,
         n_epochs=10,
         batch_size=64,
-        hidden_dim = 64
+        hidden_dim=64,
+        target_kl=0.1,
+        **kwargs
     ):
         super().__init__(state_dim, action_dim, max_action, device)
 
         self.actor = Actor(state_dim, action_dim, max_action=max_action, hidden_dim=hidden_dim).to(device)
-        self.critic = ValueCritic(state_dim,hidden_dim=hidden_dim).to(device)
+        self.critic = ValueCritic(state_dim, hidden_dim=hidden_dim).to(device)
+
         self.optimizer = optim.Adam(
-            [
-                {"params": self.actor.parameters()},
-                {"params": self.critic.parameters()},
-            ],
-            lr=lr,
+            list(self.actor.parameters()) + list(self.critic.parameters()), lr=lr
         )
 
         self.gamma = gamma
+        self.gae_lambda = gae_lambda
         self.clip_range = clip_range
         self.entropy_coef = entropy_coef
         self.vf_coef = vf_coef
         self.n_epochs = n_epochs
         self.batch_size = batch_size
+        self.target_kl = max(target_kl, 0.02)  # Avoid oversensitive early stopping
 
     def select_action(self, state, evaluate=False):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if evaluate:
-            mean, log_std = self.actor(state)
+            mean, _ = self.actor(state)
             action = torch.tanh(mean) * self.max_action
-            return action.cpu().numpy().flatten()
+            return action.cpu().detach().numpy().flatten()
         action, _ = self.actor.sample(state)
         return action.cpu().detach().numpy().flatten()
 
-    def compute_returns_and_advantages(self, rewards, values, dones, next_value):
+    def compute_gae(self, rewards, values, dones, next_value):
+        assert isinstance(values, list), f"Expected list, got {type(values)} with values={values}"
+        values = values + [next_value]
+        gae = 0
         returns, advantages = [], []
-        R = next_value
-        for r, v, d in zip(reversed(rewards), reversed(values), reversed(dones)):
-            R = r + self.gamma * R * (1 - d)
-            returns.insert(0, R)
-            advantages.insert(0, R - v)
-        returns = torch.tensor(returns, dtype=torch.float32).to(self.device)
+        for t in reversed(range(len(rewards))):
+            delta = rewards[t] + self.gamma * values[t + 1] * (1 - dones[t]) - values[t]
+            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
+            advantages.insert(0, gae)
+            returns.insert(0, gae + values[t])
         advantages = torch.tensor(advantages, dtype=torch.float32).to(self.device)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        returns = torch.tensor(returns, dtype=torch.float32).to(self.device)
+
+        if advantages.shape[0] > 1:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        else:
+            advantages = advantages * 0  # avoid warning on std(1) sample
+
         return returns, advantages
 
     def _get_log_probs(self, states, actions):
         mean, log_std = self.actor(states)
+        log_std = torch.clamp(log_std, -20, 2)
         std = log_std.exp()
+
+        if torch.isnan(mean).any() or torch.isnan(std).any():
+            raise ValueError("NaNs detected in actor output: mean or std is NaN")
+
         normal = Normal(mean, std)
         pre_tanh = torch.atanh(torch.clamp(actions / self.actor.max_action, -0.999, 0.999))
-        log_prob = normal.log_prob(pre_tanh) - torch.log(1 - actions.pow(2) + 1e-6)
+        denominator = torch.clamp(1 - actions.pow(2), min=1e-6)
+        log_prob = normal.log_prob(pre_tanh) - torch.log(denominator)
         return log_prob.sum(dim=1, keepdim=True)
 
     def _get_entropy(self, states):
         mean, log_std = self.actor(states)
+        log_std = torch.clamp(log_std, -20, 2)
         std = log_std.exp()
         normal = Normal(mean, std)
         return normal.entropy().sum(dim=1).mean()
@@ -101,51 +118,55 @@ class PPO(BaseAgent):
 
         with torch.no_grad():
             old_log_probs = self._get_log_probs(states, actions)
-            values = self.critic(states).squeeze()
-            next_value = self.critic(
-                torch.FloatTensor(next_state).to(self.device).unsqueeze(0)
-            ).squeeze()
-            returns, advantages = self.compute_returns_and_advantages(
-                rewards, values.cpu().numpy(), dones, next_value.cpu().numpy()
-            )
+            assert states.shape[0] > 0, f"Empty states tensor: {states.shape}"
+            critic_output = self.critic(states).detach().cpu().numpy()
+            values = critic_output.squeeze().tolist()
+            if isinstance(values, float):
+                values = [values]
 
-        dataset = torch.utils.data.TensorDataset(
-            states, actions, old_log_probs, returns, advantages
-        )
+            next_state_tensor = torch.FloatTensor(next_state).to(self.device).unsqueeze(0)
+            next_value = self.critic(next_state_tensor).item()
+            returns, advantages = self.compute_gae(rewards, values, dones, next_value)
+
+        dataset = torch.utils.data.TensorDataset(states, actions, old_log_probs, returns, advantages)
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
+        kl_divs = []
         for _ in range(self.n_epochs):
             for batch_states, batch_actions, batch_old_log_probs, batch_returns, batch_advantages in loader:
                 new_log_probs = self._get_log_probs(batch_states, batch_actions)
                 ratio = torch.exp(new_log_probs - batch_old_log_probs)
+
                 unclipped = ratio * batch_advantages
                 clipped = torch.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range) * batch_advantages
                 policy_loss = -torch.min(unclipped, clipped).mean()
 
                 value_preds = self.critic(batch_states).squeeze()
-                value_loss = F.mse_loss(value_preds, batch_returns)
+                value_loss = F.mse_loss(value_preds.view(-1), batch_returns.view(-1))
 
                 entropy = self._get_entropy(batch_states)
                 loss = policy_loss + self.vf_coef * value_loss - self.entropy_coef * entropy
 
                 self.optimizer.zero_grad()
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+                torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
                 self.optimizer.step()
+
+                kl = (batch_old_log_probs - new_log_probs).mean().item()
+                kl_divs.append(kl)
+
+            if np.mean(kl_divs) > self.target_kl * 1.5:
+                # print(f"Early stopping due to high KL divergence: {np.mean(kl_divs):.4f}")
+                break
 
         return {
             "policy_loss": policy_loss.item(),
             "value_loss": value_loss.item(),
             "entropy_loss": entropy.item(),
             "total_loss": loss.item(),
+            "kl_divergence": np.mean(kl_divs),
         }
-
-    def save(self, directory, name):
-        torch.save(self.actor.state_dict(), f"{directory}/ppo_actor_{name}.pth")
-        torch.save(self.critic.state_dict(), f"{directory}/ppo_critic_{name}.pth")
-
-    def load(self, directory, name):
-        self.actor.load_state_dict(torch.load(f"{directory}/ppo_actor_{name}.pth"))
-        self.critic.load_state_dict(torch.load(f"{directory}/ppo_critic_{name}.pth"))
 
 
 def parse_args():
@@ -236,21 +257,13 @@ def main():
     state_dim, action_dim, max_action = get_env_info(env)
     device = get_device()
     print(f"Using device: {device}")
-    print(args)
-    print(state_dim, action_dim, max_action)
 
     agent = PPO(
         state_dim,
         action_dim,
         max_action,
         device,
-        lr=args.lr,
-        gamma=args.gamma,
-        clip_range=args.clip_range,
-        entropy_coef=args.entropy_coef,
-        vf_coef=args.vf_coef,
-        n_epochs=args.n_epochs,
-        batch_size=args.batch_size,
+        **vars(args)
     )
 
     if args.evaluate:
