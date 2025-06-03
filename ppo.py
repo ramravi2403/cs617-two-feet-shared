@@ -167,6 +167,13 @@ class PPO(BaseAgent):
             "total_loss": loss.item(),
             "kl_divergence": np.mean(kl_divs),
         }
+    def save(self, directory, name):
+        torch.save(self.actor.state_dict(), f"{directory}/a2c_actor_{name}.pth")
+        torch.save(self.critic.state_dict(), f"{directory}/a2c_critic_{name}.pth")
+
+    def load(self, directory, name):
+        self.actor.load_state_dict(torch.load(f"{directory}/a2c_actor_{name}.pth"))
+        self.critic.load_state_dict(torch.load(f"{directory}/a2c_critic_{name}.pth"))
 
 
 def parse_args():
