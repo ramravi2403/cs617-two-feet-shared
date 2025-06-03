@@ -1,4 +1,4 @@
-from config.optimization_config import OptimizationConfig, ParameterRange
+from tuning.config.optimization_config import OptimizationConfig, ParameterRange
 
 PPO_CONFIG = OptimizationConfig(
     env_name="BipedalWalker-v3",
