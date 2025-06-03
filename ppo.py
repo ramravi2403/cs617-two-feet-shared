@@ -252,7 +252,7 @@ def train_ppo(agent, env, args, save_dir):
 
 def main():
     args = parse_args()
-    env = setup_environment(args.env, args.seed, render_mode="human" if args.render else None)
+    env = setup_environment(args.env, args.seed, render_mode="human" if args.render else 'rgb_array')
 
     state_dim, action_dim, max_action = get_env_info(env)
     device = get_device()
