@@ -60,20 +60,19 @@ class PPO(BaseAgent):
         self.vf_coef = vf_coef
         self.n_epochs = n_epochs
         self.batch_size = batch_size
-        self.target_kl = max(target_kl, 0.02)  # Avoid oversensitive early stopping
+        self.target_kl = max(target_kl, 0.02)
 
     def select_action(self, state, evaluate=False):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if evaluate:
             mean, _ = self.actor(state)
             action = torch.tanh(mean) * self.max_action
-            return action.cpu().detach().numpy().flatten()
+            return action.detach().cpu().numpy().flatten()
         action, _ = self.actor.sample(state)
-        return action.cpu().detach().numpy().flatten()
+        return action.detach().cpu().numpy().flatten()
 
     def compute_gae(self, rewards, values, dones, next_value):
-        assert isinstance(values, list), f"Expected list, got {type(values)} with values={values}"
-        values = values + [next_value]
+        values = torch.cat([values, next_value.unsqueeze(0)], dim=0)
         gae = 0
         returns, advantages = [], []
         for t in reversed(range(len(rewards))):
@@ -81,13 +80,14 @@ class PPO(BaseAgent):
             gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
             advantages.insert(0, gae)
             returns.insert(0, gae + values[t])
+
         advantages = torch.tensor(advantages, dtype=torch.float32).to(self.device)
         returns = torch.tensor(returns, dtype=torch.float32).to(self.device)
 
         if advantages.shape[0] > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         else:
-            advantages = advantages * 0  # avoid warning on std(1) sample
+            advantages = advantages - advantages.mean()
 
         return returns, advantages
 
@@ -96,14 +96,11 @@ class PPO(BaseAgent):
         log_std = torch.clamp(log_std, -20, 2)
         std = log_std.exp()
 
-        if torch.isnan(mean).any() or torch.isnan(std).any():
-            raise ValueError("NaNs detected in actor output: mean or std is NaN")
-
         normal = Normal(mean, std)
-        pre_tanh = torch.atanh(torch.clamp(actions / self.actor.max_action, -0.999, 0.999))
-        denominator = torch.clamp(1 - actions.pow(2), min=1e-6)
-        log_prob = normal.log_prob(pre_tanh) - torch.log(denominator)
-        return log_prob.sum(dim=1, keepdim=True)
+        pre_tanh_action = torch.atanh(torch.clamp(actions / self.actor.max_action, -0.999, 0.999))
+        log_prob = normal.log_prob(pre_tanh_action).sum(dim=1)
+        log_prob -= torch.log(1 - actions.pow(2) + 1e-6).sum(dim=1)
+        return log_prob.unsqueeze(-1)
 
     def _get_entropy(self, states):
         mean, log_std = self.actor(states)
@@ -115,24 +112,23 @@ class PPO(BaseAgent):
     def train(self, states, actions, rewards, dones, next_state):
         states = torch.FloatTensor(np.array(states)).to(self.device)
         actions = torch.FloatTensor(np.array(actions)).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         with torch.no_grad():
             old_log_probs = self._get_log_probs(states, actions)
-            assert states.shape[0] > 0, f"Empty states tensor: {states.shape}"
-            critic_output = self.critic(states).detach().cpu().numpy()
-            values = critic_output.squeeze().tolist()
-            if isinstance(values, float):
-                values = [values]
 
+            values = self.critic(states).squeeze().detach()
             next_state_tensor = torch.FloatTensor(next_state).to(self.device).unsqueeze(0)
-            next_value = self.critic(next_state_tensor).item()
+            next_value = self.critic(next_state_tensor).detach().squeeze()
+
             returns, advantages = self.compute_gae(rewards, values, dones, next_value)
 
         dataset = torch.utils.data.TensorDataset(states, actions, old_log_probs, returns, advantages)
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        kl_divs = []
-        for _ in range(self.n_epochs):
+        for epoch in range(self.n_epochs):
+            kl_divs = []
             for batch_states, batch_actions, batch_old_log_probs, batch_returns, batch_advantages in loader:
                 new_log_probs = self._get_log_probs(batch_states, batch_actions)
                 ratio = torch.exp(new_log_probs - batch_old_log_probs)
@@ -142,7 +138,7 @@ class PPO(BaseAgent):
                 policy_loss = -torch.min(unclipped, clipped).mean()
 
                 value_preds = self.critic(batch_states).squeeze()
-                value_loss = F.mse_loss(value_preds.view(-1), batch_returns.view(-1))
+                value_loss = F.mse_loss(value_preds, batch_returns)
 
                 entropy = self._get_entropy(batch_states)
                 loss = policy_loss + self.vf_coef * value_loss - self.entropy_coef * entropy
@@ -157,23 +153,23 @@ class PPO(BaseAgent):
                 kl_divs.append(kl)
 
             if np.mean(kl_divs) > self.target_kl * 1.5:
-                # print(f"Early stopping due to high KL divergence: {np.mean(kl_divs):.4f}")
                 break
 
         return {
             "policy_loss": policy_loss.item(),
             "value_loss": value_loss.item(),
-            "entropy_loss": entropy.item(),
+            "entropy": entropy.item(),
             "total_loss": loss.item(),
             "kl_divergence": np.mean(kl_divs),
         }
+
     def save(self, directory, name):
-        torch.save(self.actor.state_dict(), f"{directory}/a2c_actor_{name}.pth")
-        torch.save(self.critic.state_dict(), f"{directory}/a2c_critic_{name}.pth")
+        torch.save(self.actor.state_dict(), f"{directory}/ppo_actor_{name}.pth")
+        torch.save(self.critic.state_dict(), f"{directory}/ppo_critic_{name}.pth")
 
     def load(self, directory, name):
-        self.actor.load_state_dict(torch.load(f"{directory}/a2c_actor_{name}.pth"))
-        self.critic.load_state_dict(torch.load(f"{directory}/a2c_critic_{name}.pth"))
+        self.actor.load_state_dict(torch.load(f"{directory}/ppo_actor_{name}.pth"))
+        self.critic.load_state_dict(torch.load(f"{directory}/ppo_critic_{name}.pth"))
 
 
 def parse_args():
